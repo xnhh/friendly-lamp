@@ -1,0 +1,16 @@
+{
+  "_comment": "此配置文件仅供参考，starknet-devnet 使用命令行参数启动",
+  "host": "127.0.0.1",
+  "port": 5050,
+  "seed": 42,
+  "accounts": 10,
+  "initial_balance": 1000000000000000000000,
+  "gas_price": 1000000000,
+  "timeout": 60,
+  "fork": null,
+  "fork_block": null,
+  "lite_mode": false,
+  "dump_on": "exit",
+  "dump_path": "./devnet-state.json",
+  "accounts_file": "./devnet-accounts.json"
+}
