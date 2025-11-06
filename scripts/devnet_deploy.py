@@ -121,14 +121,14 @@ def deploy_contract():
     # 先导入账户
     import_account()
     
-    contract_file = "target/dev/friendly_lamp_HelloWorld.contract_class.json"
+    contract_file = "target/dev/friendly_lamp_DeltaNeutralBTCVault.contract_class.json"
     if not Path(contract_file).exists():
         print(f"❌ 合约文件不存在: {contract_file}")
         return None
     
     # 先声明合约类
     print("📝 声明合约类...")
-    declare_cmd = f"sncast --profile=devnet declare --url=http://127.0.0.1:5050 --contract-name HelloWorld"
+    declare_cmd = f"sncast --profile=devnet declare --url=http://127.0.0.1:5050 --contract-name DeltaNeutralBTCVault"
     
     declare_result = run_command(declare_cmd, "声明合约类", check=False)
     
@@ -148,8 +148,9 @@ def deploy_contract():
         print("❌ 无法从声明结果中获取 class_hash")
         return None
     
-    # 使用 sncast 部署
-    deploy_cmd = f"sncast --profile=devnet deploy --class-hash {class_hash} --constructor-calldata 0x48656c6c6f20576f726c64 --salt=0"
+    # 使用 sncast 部署 - Delta-Neutral BTC Vault 构造函数参数
+    # 构造函数参数: perps_dex_address, wbtc_address, rebalance_threshold, max_leverage
+    deploy_cmd = f"sncast --profile=devnet deploy --class-hash {class_hash} --constructor-calldata 0x0 0x0 100 2000000000000000000000 --salt=0"
     
     result = run_command(deploy_cmd, "部署合约到 devnet", check=False)
     
@@ -172,11 +173,29 @@ def interact_with_contract(contract_address):
     
     print(f"\n🔗 与合约交互示例 (地址: {contract_address})")
     print("你可以使用以下命令与合约交互:")
-    print(f"  # 获取问候语")
-    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_greeting")
+    print(f"  # 获取总供应量")
+    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_total_dnbtc_supply")
     print(f"  ")
-    print(f"  # 设置新的问候语")
-    print(f"  sncast --profile=devnet invoke --contract-address {contract_address} --function set_greeting --arguments 0x48656c6c6f204465766e6574")
+    print(f"  # 获取总WBTC存款")
+    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_total_wbtc_deposited")
+    print(f"  ")
+    print(f"  # 获取多头头寸大小")
+    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_long_position_size")
+    print(f"  ")
+    print(f"  # 获取空头头寸大小")
+    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_short_position_size")
+    print(f"  ")
+    print(f"  # 获取净Delta")
+    print(f"  sncast --profile=devnet call --contract-address {contract_address} --function get_net_delta")
+    print(f"  ")
+    print(f"  # 存款WBTC (示例: 1000000000000000000 wei = 1 WBTC)")
+    print(f"  sncast --profile=devnet invoke --contract-address {contract_address} --function deposit_wbtc --arguments 1000000000000000000")
+    print(f"  ")
+    print(f"  # 收集资金费率收益")
+    print(f"  sncast --profile=devnet invoke --contract-address {contract_address} --function harvest_funding")
+    print(f"  ")
+    print(f"  # 再平衡头寸")
+    print(f"  sncast --profile=devnet invoke --contract-address {contract_address} --function rebalance_positions")
 
 def save_deployment_info(contract_address, accounts):
     """保存部署信息"""
@@ -194,8 +213,8 @@ def save_deployment_info(contract_address, accounts):
 
 def main():
     """主函数"""
-    print("🌟 Starknet Devnet 部署工具")
-    print("=" * 50)
+    print("🌟 Delta-Neutral BTC Vault - Starknet Devnet 部署工具")
+    print("=" * 60)
     
     # 检查环境
     if not check_devnet_installed():

@@ -1,11 +1,14 @@
-# 🌟 Friendly Lamp - Starknet Cairo 智能合约项目
+# 🌟 Delta-Neutral BTC Vault - Starknet Cairo 智能合约项目
 
-这是一个基于Starknet的Cairo智能合约演示项目，包含完整的开发、测试和部署流程。
+这是一个基于Starknet的Delta-Neutral BTC Vault智能合约项目，实现了无价格风险的BTC收益策略。
 
 ## 📋 项目特性
 
-- ✅ 简单的Hello World合约
-- ✅ 余额管理功能
+- ✅ Delta-Neutral BTC Vault合约
+- ✅ WBTC存款和代币化功能
+- ✅ 永续合约多头/空头头寸管理
+- ✅ 自动再平衡机制
+- ✅ 资金费率收益收集
 - ✅ 完整的测试套件
 - ✅ 自动化部署脚本
 - ✅ 合约交互工具
@@ -59,24 +62,61 @@ friendly-lamp/
 
 ## 🔧 合约功能
 
-### HelloWorld 合约
+### Delta-Neutral BTC Vault 合约
 
-这是一个简单的演示合约，包含以下功能：
+这是一个创新的DeFi产品，实现Delta-Neutral策略来为BTC持有者提供无价格风险的收益：
 
-- **问候语管理**: 获取和设置问候语
-- **余额管理**: 存款、提取和查询余额
-- **权限控制**: 只有合约所有者可以提取资金
+- **WBTC存款**: 用户存入WBTC获得dnBTC代币
+- **Delta-Neutral策略**: 同时建立多头和空头头寸消除价格风险
+- **自动再平衡**: 监控并调整头寸保持Delta中性
+- **收益收集**: 从永续合约资金费率中获得收益
+- **代币化**: 发行dnBTC代币代表用户份额
+
+### 核心策略
+
+```
+用户存入 WBTC
+    ↓
+Vault 建立头寸：
+- 用WBTC作为抵押品开多头
+- 同时开相同大小的空头
+- 净敞口 = 0 (Delta-Neutral)
+    ↓
+收益来源：
+- 永续合约资金费率
+- 无价格风险
+```
 
 ### 合约接口
 
 ```cairo
 #[starknet::interface]
-pub trait IHelloWorld<TContractState> {
-    fn get_greeting(self: @TContractState) -> felt252;
-    fn set_greeting(ref self: TContractState, new_greeting: felt252);
-    fn get_balance(self: @TContractState) -> u256;
-    fn deposit(ref self: TContractState, amount: u256);
-    fn withdraw(ref self: TContractState, amount: u256);
+pub trait IDeltaNeutralBTCVault<TContractState> {
+    // 存款和取款
+    fn deposit_wbtc(ref self: TContractState, amount: u256) -> u256;
+    fn withdraw_wbtc(ref self: TContractState, dnbtc_amount: u256) -> u256;
+    
+    // 代币化功能
+    fn get_dnbtc_balance(self: @TContractState, user: ContractAddress) -> u256;
+    fn get_total_dnbtc_supply(self: @TContractState) -> u256;
+    fn get_total_wbtc_deposited(self: @TContractState) -> u256;
+    
+    // 头寸管理
+    fn get_long_position_size(self: @TContractState) -> u256;
+    fn get_short_position_size(self: @TContractState) -> u256;
+    fn get_net_delta(self: @TContractState) -> u256;
+    
+    // 收益管理
+    fn get_accumulated_funding(self: @TContractState) -> u256;
+    fn harvest_funding(ref self: TContractState);
+    
+    // 再平衡
+    fn rebalance_positions(ref self: TContractState);
+    
+    // 管理员功能
+    fn set_perps_dex_address(ref self: TContractState, dex_address: ContractAddress);
+    fn set_wbtc_address(ref self: TContractState, wbtc_address: ContractAddress);
+    fn emergency_withdraw(ref self: TContractState);
 }
 ```
 
@@ -94,9 +134,11 @@ scarb test
 
 ### 测试用例
 
-- ✅ 获取问候语
-- ✅ 设置问候语
-- ✅ 存款功能
+- ✅ WBTC存款功能
+- ✅ dnBTC代币化
+- ✅ Delta-Neutral头寸建立
+- ✅ 资金费率收益收集
+- ✅ 自动再平衡机制
 - ✅ 提取功能
 - ✅ 权限控制测试
 - ✅ 余额不足测试
@@ -144,10 +186,13 @@ python scripts/interact.py
 
 ### 交互功能
 
-- 📝 获取和设置问候语
-- 💰 查询余额
-- 💳 存款和提取
-- 🔐 权限管理
+- 💰 WBTC存款和提取
+- 🪙 dnBTC代币查询
+- 📊 头寸大小查询
+- ⚖️ Delta状态监控
+- 💸 资金费率收益收集
+- 🔄 头寸再平衡
+- 🔐 管理员功能
 
 ## 📚 开发指南
 

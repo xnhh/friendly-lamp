@@ -3,12 +3,28 @@ name = "friendly_lamp"
 version = "0.1.0"
 edition = "2023_10"
 
+
 [dependencies]
-starknet = ">=2.3.0"
+alexandria_math = { git = "https://github.com/keep-starknet-strange/alexandria.git", rev = "475eaf015f4e997cff8ec31a5e7b4ab3f9a86e32" } # later change to 2.9.2
+alexandria_storage = { git = "https://github.com/keep-starknet-strange/alexandria.git", rev = "475eaf015f4e997cff8ec31a5e7b4ab3f9a86e32" }
+alexandria_data_structures = { git = "https://github.com/keep-starknet-strange/alexandria.git", rev = "475eaf015f4e997cff8ec31a5e7b4ab3f9a86e32" }
+openzeppelin = "0.18.0"
+openzeppelin_introspection = "0.18.0"
+ekubo = { git = "https://github.com/EkuboProtocol/abis.git", rev = "edb6de8c9baf515f1053bbab3d86825d54a63bc3"}
+starknet = ">=2.6.0" # cairo version
+
+[dev-dependencies]
+snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry", tag = "v0.38.3" }
+assert_macros = "2.8.4"
 
 [[target.starknet-contract]]
 sierra = true
 casm = true
 
-[dev-dependencies]
-cairo_test = "2.12.2"
+[scripts]
+test = "snforge test --max-n-steps 30000000"
+
+[[tool.snforge.fork]]
+name = "mainnet_971311"
+url = "https://1rpc.io/starknet"
+block_id.number = "971311"
