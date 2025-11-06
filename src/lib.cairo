@@ -3,6 +3,7 @@ use starknet::ContractAddress;
 pub mod components;
 pub mod mods;
 pub mod config;
+pub mod tests;
 
 // Delta-Neutral BTC Vault Interface
 #[starknet::interface]

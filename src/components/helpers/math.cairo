@@ -304,7 +304,7 @@ fn _raw_u256_mul_div(x: u256, y: u256, denominator: u256) -> (u256, u256) {
     (q, r)
 }
 
-fn max(a: u256, b: u256) -> u256 {
+pub fn max(a: u256, b: u256) -> u256 {
     let mut max: u256 = 0;
     if (a >= b) {
         max = a;
@@ -314,7 +314,7 @@ fn max(a: u256, b: u256) -> u256 {
     return max;
 }
 
-fn min(a: u256, b: u256) -> u256 {
+pub fn min(a: u256, b: u256) -> u256 {
     let mut min: u256 = 0;
     if (a <= b) {
         min = a;
@@ -324,62 +324,4 @@ fn min(a: u256, b: u256) -> u256 {
     return min;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{max, min};
-
-    #[test]
-    fn test_max() {
-        let a: u256 = 100;
-        let b: u256 = 200;
-        let ret = max(a, b);
-        assert(ret == b, 'invalid max');
-    }
-
-    #[test]
-    fn test_min() {
-        let a: u256 = 100;
-        let b: u256 = 200;
-        let ret = min(a, b);
-        assert(ret == a, 'invalid min');
-    }
-
-    #[test]
-    fn test_mul() {
-        assert_eq!(@super::mul(10, 2000000000000000000000000000), @20, "FAILED");
-    }
-
-    #[test]
-    fn test_mul_decimals() {
-        assert_eq!(@super::mul_decimals(10, 2000000000000000000000000000, 27), @20, "FAILED");
-    }
-
-    #[test]
-    #[should_panic(expected: ('u256_mul Overflow',))]
-    fn test_mul_overflow() {
-        super::mul(
-            0x400000000000000000000000000000000000000000000000000000000000000,
-            2000000000000000000000000000
-        );
-    }
-
-    #[test]
-    #[should_panic(expected: ('u256_mul Overflow',))]
-    fn test_mul_decimals_overflow() {
-        super::mul_decimals(
-            0x400000000000000000000000000000000000000000000000000000000000000,
-            2000000000000000000000000000,
-            27
-        );
-    }
-
-    #[test]
-    fn test_div() {
-        assert_eq!(@super::div(10, 2000000000000000000000000000), @5, "FAILED");
-    }
-
-    #[test]
-    fn test_div_decimals() {
-        assert_eq!(@super::div_decimals(10, 2000000000000000000000000000, 27), @5, "FAILED");
-    }
-}
+// tests moved to `tests/math_test.cairo`
