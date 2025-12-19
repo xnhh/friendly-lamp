@@ -325,3 +325,32 @@ pub fn min(a: u256, b: u256) -> u256 {
 }
 
 // tests moved to `tests/math_test.cairo`
+
+// Additional helper functions for yield contract
+pub fn mul_div(a: u256, b: u256, denominator: u256) -> u256 {
+    u256_mul_div(a, b, denominator, Rounding::Down)
+}
+
+pub fn mul(a: u256, b: u256) -> u256 {
+    a * b
+}
+
+pub fn div_ceil(a: u256, b: u256) -> u256 {
+    if (b == 0) {
+        panic_with_felt252('Division by zero');
+    }
+    if (a == 0) {
+        return 0;
+    }
+    (a + b - 1) / b
+}
+
+pub fn pow(base: u256, exponent: u256) -> u256 {
+    if (exponent == 0) {
+        return 1;
+    }
+    if (exponent == 1) {
+        return base;
+    }
+    ten_pow(exponent.try_into().unwrap())
+}
