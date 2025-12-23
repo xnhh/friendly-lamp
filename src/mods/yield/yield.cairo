@@ -1,33 +1,42 @@
-use starknet::{ContractAddress, get_contract_address};
-use starknet::get_caller_address;
-use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-use openzeppelin::access::ownable::OwnableComponent;
-use alexandria_math::u256::U256Math;
-use core::num::traits::{Zero, Into};
-use zeroable::Zeroable;
-use friendly_lamp::components::helpers::{ERC20Helper, math};
-use friendly_lamp::components::vesu::{vesuStruct, vesuToken};
-use super::interface::{IYield, IYieldView, IYieldOwner, UserInfo};
+use starknet::ContractAddress;
 
 // Constants
-const WBTC_DECIMALS: u8 = 8;
-const ABTC_DECIMALS: u8 = 18;
-const DECIMAL_PRECISION: u256 = 1_000_000_000_000_000_000; // 1e18
-const COLLATERAL_RATIO_PRECISION: u256 = 10_000; // 10000 = 100%
+pub const WBTC_DECIMALS: u8 = 8;
+pub const ABTC_DECIMALS: u8 = 18;
+pub const DECIMAL_PRECISION: u256 = 1_000_000_000_000_000_000; // 1e18
+pub const COLLATERAL_RATIO_PRECISION: u256 = 10_000; // 10000 = 100%
 
 // Minimum collateral ratio (150%) - user must maintain 150% collateral
-const MIN_COLLATERAL_RATIO: u256 = 15000;
+pub const MIN_COLLATERAL_RATIO: u256 = 15000;
 
 // Liquidation threshold (120%) - position becomes liquidatable below this
-const LIQUIDATION_THRESHOLD: u256 = 12000;
+pub const LIQUIDATION_THRESHOLD: u256 = 12000;
 
 // Liquidation bonus (105%) - liquidator gets 5% bonus
-const LIQUIDATION_BONUS: u256 = 10500;
+pub const LIQUIDATION_BONUS: u256 = 10500;
 
 #[starknet::contract]
 mod Yield {
-    use starknet::ContractAddress;
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry};
     use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::access::ownable::OwnableComponent::InternalTrait;
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use core::num::traits::Zero;
+    use friendly_lamp::components::helpers::math;
+    use friendly_lamp::components::vesu::vesu::{vesuStruct, vesuToken, ILendMod};
+    use friendly_lamp::components::vesu::interface::IStonDispatcher;
+    use super::interface::{IYield, IYieldView, IYieldOwner, UserInfo};
+    use super::{
+        DECIMAL_PRECISION, COLLATERAL_RATIO_PRECISION,
+        MIN_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD, LIQUIDATION_BONUS
+    };
+
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+
+    #[abi(embed_v0)]
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -44,7 +53,7 @@ mod Yield {
         total_abtc_borrowed: u256,
 
         // User data
-        user_info: LegacyMap<ContractAddress, UserInfo>,
+        user_info: Map<ContractAddress, UserInfo>,
 
         // Settings
         min_collateral_ratio: u256,
@@ -64,6 +73,7 @@ mod Yield {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
+        #[flat]
         OwnableEvent: OwnableComponent::Event,
         Deposited: Deposited,
         Withdrawn: Withdrawn,
@@ -143,20 +153,20 @@ mod Yield {
         self.vesu_debt.write(vesu_debt);
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IYieldImpl of IYield<ContractState> {
         fn deposit(ref self: ContractState, amount: u256) {
             let caller = get_caller_address();
-            assert(amount > 0, "Yield: Amount must be > 0");
+            assert(amount > 0, 'Yield: Amount must be > 0');
 
             // Calculate shares to mint
             let shares = self.calculate_shares(amount);
 
             // Update user info
-            let mut user_info = self.user_info.read(caller);
+            let mut user_info = self.user_info.entry(caller).read();
             user_info.deposited_wbtc += amount;
             user_info.shares += shares;
-            self.user_info.write(caller, user_info);
+            self.user_info.entry(caller).write(user_info);
 
             // Update global state
             self.total_wbtc_deposited.write(self.total_wbtc_deposited.read() + amount);
@@ -164,33 +174,33 @@ mod Yield {
 
             // Transfer WBTC from user to contract
             let wbtc_dispatcher = IERC20Dispatcher { contract_address: self.wbtc_token.read() };
-            wbtc_dispatcher.transferFrom(caller, get_contract_address(), amount);
+            wbtc_dispatcher.transfer_from(caller, get_contract_address(), amount);
 
-            emit Deposited { user: caller, amount, shares };
+            self.emit(Deposited { user: caller, amount, shares });
         }
 
         fn withdraw(ref self: ContractState, amount: u256) {
             let caller = get_caller_address();
-            assert(amount > 0, "Yield: Amount must be > 0");
+            assert(amount > 0, 'Yield: Amount must be > 0');
 
-            let mut user_info = self.user_info.read(caller);
-            assert(user_info.deposited_wbtc >= amount, "Yield: Insufficient deposited amount");
+            let mut user_info = self.user_info.entry(caller).read();
+            assert(user_info.deposited_wbtc >= amount, 'Yield: Insufficient deposit');
 
             // Check collateral ratio after withdrawal
             let shares_to_burn = self.shares_to_wbtc(amount);
-            assert(user_info.shares >= shares_to_burn, "Yield: Insufficient shares");
+            assert(user_info.shares >= shares_to_burn, 'Yield: Insufficient shares');
 
             // Check if withdrawal would maintain healthy collateral ratio
-            if (!user_info.borrowed_abtc.is_zero()) {
+            if (user_info.borrowed_abtc > 0) {
                 let new_collateral = user_info.deposited_wbtc - amount;
                 let new_ratio = self.calculate_collateral_ratio(new_collateral, user_info.borrowed_abtc);
-                assert(new_ratio >= self.min_collateral_ratio.read(), "Yield: Withdrawal would cause undercollateralization");
+                assert(new_ratio >= self.min_collateral_ratio.read(), 'Yield: Undercollateralized');
             }
 
             // Update user info
             user_info.deposited_wbtc -= amount;
             user_info.shares -= shares_to_burn;
-            self.user_info.write(caller, user_info);
+            self.user_info.entry(caller).write(user_info);
 
             // Update global state
             self.total_wbtc_deposited.write(self.total_wbtc_deposited.read() - amount);
@@ -200,77 +210,77 @@ mod Yield {
             let wbtc_dispatcher = IERC20Dispatcher { contract_address: self.wbtc_token.read() };
             wbtc_dispatcher.transfer(caller, amount);
 
-            emit Withdrawn { user: caller, amount, shares: shares_to_burn };
+            self.emit(Withdrawn { user: caller, amount, shares: shares_to_burn });
         }
 
         fn borrow(ref self: ContractState, amount: u256) {
             let caller = get_caller_address();
-            assert(amount > 0, "Yield: Amount must be > 0");
+            assert(amount > 0, 'Yield: Amount must be > 0');
 
-            let mut user_info = self.user_info.read(caller);
+            let mut user_info = self.user_info.entry(caller).read();
 
             // Calculate required collateral for this borrow
             let total_required = self.calculate_required_collateral(user_info.borrowed_abtc + amount);
-            assert(user_info.deposited_wbtc >= total_required, "Yield: Insufficient collateral");
+            assert(user_info.deposited_wbtc >= total_required, 'Yield: Insufficient collateral');
 
             // Update user info
             user_info.borrowed_abtc += amount;
-            self.user_info.write(caller, user_info);
+            self.user_info.entry(caller).write(user_info);
 
             // Update global state
             self.total_abtc_borrowed.write(self.total_abtc_borrowed.read() + amount);
 
             // Mint aBTC to user (assuming aBTC is our token with controlled mint)
-            let abtc_dispatcher = IERC20Dispatcher { contract_address: self.abtc_token.read() };
             // Note: This would require aBTC contract to have mint functionality
+            // let abtc_dispatcher = IABTCDispatcher { contract_address: self.abtc_token.read() };
             // abtc_dispatcher.mint(caller, amount);
 
-            emit Borrowed { user: caller, amount };
+            self.emit(Borrowed { user: caller, amount });
         }
 
         fn repay(ref self: ContractState, amount: u256) {
             let caller = get_caller_address();
-            assert(amount > 0, "Yield: Amount must be > 0");
+            assert(amount > 0, 'Yield: Amount must be > 0');
 
-            let mut user_info = self.user_info.read(caller);
-            assert(user_info.borrowed_abtc >= amount, "Yield: Repaying more than borrowed");
+            let mut user_info = self.user_info.entry(caller).read();
+            assert(user_info.borrowed_abtc >= amount, 'Yield: Repaying too much');
 
             // Update user info
             user_info.borrowed_abtc -= amount;
-            self.user_info.write(caller, user_info);
+            self.user_info.entry(caller).write(user_info);
 
             // Update global state
             self.total_abtc_borrowed.write(self.total_abtc_borrowed.read() - amount);
 
             // Transfer aBTC from user to contract for burning
             let abtc_dispatcher = IERC20Dispatcher { contract_address: self.abtc_token.read() };
-            abtc_dispatcher.transferFrom(caller, get_contract_address(), amount);
+            abtc_dispatcher.transfer_from(caller, get_contract_address(), amount);
             // Note: This would require aBTC contract to have burn functionality
             // abtc_dispatcher.burn(amount);
 
-            emit Repaid { user: caller, amount };
+            self.emit(Repaid { user: caller, amount });
         }
 
         fn liquidate(ref self: ContractState, user: ContractAddress, debt_to_cover: u256) {
             let caller = get_caller_address();
-            assert(debt_to_cover > 0, "Yield: Amount must be > 0");
+            assert(debt_to_cover > 0, 'Yield: Amount must be > 0');
 
-            let user_info = self.user_info.read(user);
+            let user_info = self.user_info.entry(user).read();
             let collateral_ratio = self.calculate_collateral_ratio(user_info.deposited_wbtc, user_info.borrowed_abtc);
 
             // Check if user is liquidatable
-            assert(collateral_ratio < self.liquidation_threshold.read(), "Yield: User not liquidatable");
-            assert(user_info.borrowed_abtc >= debt_to_cover, "Yield: Debt to cover too high");
+            assert(collateral_ratio < self.liquidation_threshold.read(), 'Yield: Not liquidatable');
+            assert(user_info.borrowed_abtc >= debt_to_cover, 'Yield: Debt too high');
 
             // Calculate collateral to seize
             let collateral_to_seize = self.calculate_liquidation_collateral(debt_to_cover);
-            assert(user_info.deposited_wbtc >= collateral_to_seize, "Yield: Insufficient collateral");
+            assert(user_info.deposited_wbtc >= collateral_to_seize, 'Yield: Insufficient collateral');
 
             // Update user info
             let mut updated_user_info = user_info;
             updated_user_info.deposited_wbtc -= collateral_to_seize;
             updated_user_info.borrowed_abtc -= debt_to_cover;
-            self.user_info.write(user, updated_user_info);
+            self.user_info.entry(user).write(updated_user_info);
 
             // Update global state
             self.total_wbtc_deposited.write(self.total_wbtc_deposited.read() - collateral_to_seize);
@@ -278,31 +288,31 @@ mod Yield {
 
             // Transfer aBTC from liquidator to contract
             let abtc_dispatcher = IERC20Dispatcher { contract_address: self.abtc_token.read() };
-            abtc_dispatcher.transferFrom(caller, get_contract_address(), debt_to_cover);
+            abtc_dispatcher.transfer_from(caller, get_contract_address(), debt_to_cover);
 
             // Transfer WBTC from contract to liquidator
             let wbtc_dispatcher = IERC20Dispatcher { contract_address: self.wbtc_token.read() };
             wbtc_dispatcher.transfer(caller, collateral_to_seize);
 
-            emit Liquidated {
+            self.emit(Liquidated {
                 liquidator: caller,
                 user,
                 wbtc_amount: collateral_to_seize,
                 abtc_amount: debt_to_cover,
-            };
+            });
         }
 
         fn harvest(ref self: ContractState) {
             let total_shares = self.total_shares.read();
-            assert(total_shares > 0, "Yield: No shares to harvest");
+            assert(total_shares > 0, 'Yield: No shares to harvest');
 
             // Get current position from Vesu using the vesuStruct
             let vesu_struct = vesuStruct {
-                singleton: self.vesu_singleton.read().into(),
+                singleton: IStonDispatcher { contract_address: self.vesu_singleton.read() },
                 pool_id: self.vesu_pool_id.read(),
                 col: self.vesu_collateral.read(),
                 debt: self.vesu_debt.read(),
-                oracle: Zeroable::zero(), // Not needed for deposit_amount
+                oracle: Zero::zero(),
             };
             
             let current_collateral = vesu_struct.deposit_amount(
@@ -322,18 +332,18 @@ mod Yield {
                 let new_total_deposited = tracked_deposits + total_yield;
                 self.total_wbtc_deposited.write(new_total_deposited);
 
-                emit Harvested {
+                self.emit(Harvested {
                     total_yield,
                     new_total_deposited: new_total_deposited,
-                };
+                });
             }
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IYieldViewImpl of IYieldView<ContractState> {
         fn get_user_info(self: @ContractState, user: ContractAddress) -> UserInfo {
-            self.user_info.read(user)
+            self.user_info.entry(user).read()
         }
 
         fn get_total_wbtc_deposited(self: @ContractState) -> u256 {
@@ -364,7 +374,7 @@ mod Yield {
             let total_deposited = self.total_wbtc_deposited.read();
             let total_shares = self.total_shares.read();
 
-            if (total_deposited.is_zero()) {
+            if (total_deposited == 0) {
                 // First deposit 1:1 share ratio
                 wbtc_amount
             } else {
@@ -377,7 +387,7 @@ mod Yield {
             let total_deposited = self.total_wbtc_deposited.read();
             let total_shares = self.total_shares.read();
 
-            if (total_shares.is_zero()) {
+            if (total_shares == 0) {
                 0
             } else {
                 math::mul_div(shares, total_deposited, total_shares)
@@ -387,13 +397,13 @@ mod Yield {
         fn calculate_collateral_ratio(
             self: @ContractState, collateral_wbtc: u256, borrowed_abtc: u256
         ) -> u256 {
-            if (borrowed_abtc.is_zero()) {
+            if (borrowed_abtc == 0) {
                 return COLLATERAL_RATIO_PRECISION * 100; // Infinite ratio
             }
 
             // Convert both to 18 decimals for calculation
             // WBTC is 8 decimals, aBTC is 18 decimals
-            let collateral_wbtc_18 = collateral_wbtc * 10_u256.pow(10); // Convert 8 -> 18 decimals
+            let collateral_wbtc_18 = collateral_wbtc * math::ten_pow(10); // Convert 8 -> 18 decimals
 
             // Calculate collateral value in aBTC terms
             let collateral_value = math::mul_div(collateral_wbtc_18, self.wbtc_abtc_price.read(), DECIMAL_PRECISION);
@@ -419,10 +429,10 @@ mod Yield {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IYieldOwnerImpl of IYieldOwner<ContractState> {
         fn owner(self: @ContractState) -> ContractAddress {
-            self.ownable.get_owner()
+            self.ownable.owner()
         }
 
         fn transfer_ownership(ref self: ContractState, new_owner: ContractAddress) {
@@ -435,26 +445,26 @@ mod Yield {
 
         fn update_price(ref self: ContractState, new_price: u256) {
             self.ownable.assert_only_owner();
-            assert(new_price > 0, "Yield: Price must be > 0");
+            assert(new_price > 0, 'Yield: Price must be > 0');
             self.wbtc_abtc_price.write(new_price);
-            emit PriceUpdated { new_price };
+            self.emit(PriceUpdated { new_price });
         }
 
         fn update_min_collateral_ratio(ref self: ContractState, new_ratio: u256) {
             self.ownable.assert_only_owner();
-            assert(new_ratio >= COLLATERAL_RATIO_PRECISION, "Yield: Ratio must be >= 100%");
+            assert(new_ratio >= COLLATERAL_RATIO_PRECISION, 'Yield: Ratio must be >= 100%');
             self.min_collateral_ratio.write(new_ratio);
         }
 
         fn update_liquidation_threshold(ref self: ContractState, new_threshold: u256) {
             self.ownable.assert_only_owner();
-            assert(new_threshold >= COLLATERAL_RATIO_PRECISION, "Yield: Threshold must be >= 100%");
+            assert(new_threshold >= COLLATERAL_RATIO_PRECISION, 'Yield: >= 100%');
             self.liquidation_threshold.write(new_threshold);
         }
 
         fn update_liquidation_bonus(ref self: ContractState, new_bonus: u256) {
             self.ownable.assert_only_owner();
-            assert(new_bonus >= COLLATERAL_RATIO_PRECISION, "Yield: Bonus must be >= 100%");
+            assert(new_bonus >= COLLATERAL_RATIO_PRECISION, 'Yield: Bonus must be >= 100%');
             self.liquidation_bonus.write(new_bonus);
         }
     }

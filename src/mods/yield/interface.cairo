@@ -55,7 +55,7 @@ pub trait IYieldOwner<TState> {
     fn update_liquidation_bonus(ref self: TState, new_bonus: u256);
 }
 
-#[derive(Drop, Copy, Serde, starknet::Store)]
+#[derive(Drop, Copy, Serde, starknet::Store, Default)]
 pub struct UserInfo {
     pub deposited_wbtc: u256,
     pub shares: u256,
