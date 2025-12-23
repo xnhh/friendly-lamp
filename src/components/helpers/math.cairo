@@ -328,11 +328,7 @@ pub fn min(a: u256, b: u256) -> u256 {
 
 // Additional helper functions for yield contract
 pub fn mul_div(a: u256, b: u256, denominator: u256) -> u256 {
-    u256_mul_div(a, b, denominator, Rounding::Down)
-}
-
-pub fn mul(a: u256, b: u256) -> u256 {
-    a * b
+    u256_mul_div(a, b, denominator, Rounding::Floor)
 }
 
 pub fn div_ceil(a: u256, b: u256) -> u256 {
