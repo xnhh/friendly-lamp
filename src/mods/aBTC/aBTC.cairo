@@ -10,7 +10,7 @@ mod aBTC {
     use openzeppelin::token::erc20::ERC20HooksEmptyImpl;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternalTrait;
-    use super::interface::{IABTC, IABTCView, IABTCOwner, IABTCERC20};
+    use friendly_lamp::mods::aBTC::interface::{IABTC, IABTCView, IABTCOwner, IABTCERC20};
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);

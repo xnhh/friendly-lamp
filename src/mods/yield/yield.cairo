@@ -26,7 +26,7 @@ mod Yield {
     use friendly_lamp::components::helpers::math;
     use friendly_lamp::components::vesu::vesu::{vesuStruct, vesuToken, ILendMod};
     use friendly_lamp::components::vesu::interface::IStonDispatcher;
-    use super::interface::{IYield, IYieldView, IYieldOwner, UserInfo};
+    use friendly_lamp::mods::yield::interface::{IYield, IYieldView, IYieldOwner, UserInfo};
     use super::{
         DECIMAL_PRECISION, COLLATERAL_RATIO_PRECISION,
         MIN_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD, LIQUIDATION_BONUS
