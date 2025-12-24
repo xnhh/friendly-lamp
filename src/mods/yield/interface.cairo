@@ -9,6 +9,7 @@ pub trait IYield<TState> {
     // Borrow/repay functions
     fn borrow(ref self: TState, amount: u256);
     fn repay(ref self: TState, amount: u256);
+
     // Harvest function
     fn harvest(ref self: TState);
 
@@ -41,14 +42,11 @@ pub trait IYieldView<TState> {
     fn calculate_liquidation_collateral(self: @TState, debt_amount: u256) -> u256;
 }
 
+// Settings management (owner-only functions)
+// Note: owner(), transfer_ownership(), renounce_ownership() are provided
+// by OpenZeppelin's OwnableMixinImpl
 #[starknet::interface]
-pub trait IYieldOwner<TState> {
-    // Ownable functions
-    fn owner(self: @TState) -> ContractAddress;
-    fn transfer_ownership(ref self: TState, new_owner: ContractAddress);
-    fn renounce_ownership(ref self: TState);
-
-    // Settings management
+pub trait IYieldSettings<TState> {
     fn update_price(ref self: TState, new_price: u256);
     fn update_min_collateral_ratio(ref self: TState, new_ratio: u256);
     fn update_liquidation_threshold(ref self: TState, new_threshold: u256);

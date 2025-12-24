@@ -10,17 +10,17 @@ mod aBTC {
     use openzeppelin::token::erc20::ERC20HooksEmptyImpl;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternalTrait;
-    use friendly_lamp::mods::aBTC::interface::{IABTC, IABTCView, IABTCOwner, IABTCERC20};
+    use friendly_lamp::mods::aBTC::interface::{IABTC, IABTCVault};
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
 
-    // ERC20 Mixin
+    // ERC20 Mixin - provides all ERC20 functions
     #[abi(embed_v0)]
     impl ERC20MixinImpl = ERC20Component::ERC20MixinImpl<ContractState>;
     impl ERC20InternalImpl = ERC20Component::InternalImpl<ContractState>;
 
-    // Ownable Mixin
+    // Ownable Mixin - provides owner(), transfer_ownership(), renounce_ownership()
     #[abi(embed_v0)]
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
@@ -54,87 +54,29 @@ mod aBTC {
         self.vault_address.write(vault_address);
     }
 
+    // Custom mint/burn functions - only vault can call
     #[abi(embed_v0)]
     impl IABTCImpl of IABTC<ContractState> {
         fn mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
-            // Only vault can mint
             let caller = get_caller_address();
             let vault = self.vault_address.read();
             assert(caller == vault, 'aBTC: Only vault can mint');
-            
             self.erc20.mint(recipient, amount);
         }
 
         fn burn(ref self: ContractState, account: ContractAddress, amount: u256) {
-            // Only vault can burn
             let caller = get_caller_address();
             let vault = self.vault_address.read();
             assert(caller == vault, 'aBTC: Only vault can burn');
-            
             self.erc20.burn(account, amount);
         }
     }
 
+    // Vault address management
     #[abi(embed_v0)]
-    impl IABTCViewImpl of IABTCView<ContractState> {
-        fn name(self: @ContractState) -> ByteArray {
-            self.erc20.name()
-        }
-
-        fn symbol(self: @ContractState) -> ByteArray {
-            self.erc20.symbol()
-        }
-
-        fn decimals(self: @ContractState) -> u8 {
-            self.erc20.decimals()
-        }
-
-        fn total_supply(self: @ContractState) -> u256 {
-            self.erc20.total_supply()
-        }
-
-        fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
-            self.erc20.balance_of(account)
-        }
-
-        fn allowance(self: @ContractState, owner: ContractAddress, spender: ContractAddress) -> u256 {
-            self.erc20.allowance(owner, spender)
-        }
-
+    impl IABTCVaultImpl of IABTCVault<ContractState> {
         fn get_vault_address(self: @ContractState) -> ContractAddress {
             self.vault_address.read()
-        }
-    }
-
-    #[abi(embed_v0)]
-    impl IABTCERC20Impl of IABTCERC20<ContractState> {
-        fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
-            self.erc20.transfer(recipient, amount)
-        }
-
-        fn transfer_from(
-            ref self: ContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
-        ) -> bool {
-            self.erc20.transfer_from(sender, recipient, amount)
-        }
-
-        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
-            self.erc20.approve(spender, amount)
-        }
-    }
-
-    #[abi(embed_v0)]
-    impl IABTCOwnerImpl of IABTCOwner<ContractState> {
-        fn owner(self: @ContractState) -> ContractAddress {
-            self.ownable.owner()
-        }
-
-        fn transfer_ownership(ref self: ContractState, new_owner: ContractAddress) {
-            self.ownable.transfer_ownership(new_owner);
-        }
-
-        fn renounce_ownership(ref self: ContractState) {
-            self.ownable.renounce_ownership();
         }
 
         fn update_vault_address(ref self: ContractState, new_vault: ContractAddress) {

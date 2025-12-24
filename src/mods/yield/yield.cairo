@@ -26,7 +26,7 @@ mod Yield {
     use friendly_lamp::components::helpers::math;
     use friendly_lamp::components::vesu::vesu::{vesuStruct, vesuToken, ILendMod};
     use friendly_lamp::components::vesu::interface::IStonDispatcher;
-    use friendly_lamp::mods::yield::interface::{IYield, IYieldView, IYieldOwner, UserInfo};
+    use friendly_lamp::mods::yield::interface::{IYield, IYieldView, IYieldSettings, UserInfo};
     use super::{
         DECIMAL_PRECISION, COLLATERAL_RATIO_PRECISION,
         MIN_COLLATERAL_RATIO, LIQUIDATION_THRESHOLD, LIQUIDATION_BONUS
@@ -429,20 +429,9 @@ mod Yield {
         }
     }
 
+    // Settings management (owner-only functions)
     #[abi(embed_v0)]
-    impl IYieldOwnerImpl of IYieldOwner<ContractState> {
-        fn owner(self: @ContractState) -> ContractAddress {
-            self.ownable.owner()
-        }
-
-        fn transfer_ownership(ref self: ContractState, new_owner: ContractAddress) {
-            self.ownable.transfer_ownership(new_owner);
-        }
-
-        fn renounce_ownership(ref self: ContractState) {
-            self.ownable.renounce_ownership();
-        }
-
+    impl IYieldSettingsImpl of IYieldSettings<ContractState> {
         fn update_price(ref self: ContractState, new_price: u256) {
             self.ownable.assert_only_owner();
             assert(new_price > 0, 'Yield: Price must be > 0');
