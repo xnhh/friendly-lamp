@@ -1,19 +1,29 @@
 use starknet::ContractAddress;
-use starknet::get_caller_address;
-use openzeppelin::token::erc20::ERC20Component;
-use openzeppelin::access::ownable::OwnableComponent;
-use super::interface::{IABTC, IABTCView, IABTCOwner, IABTCERC20};
 
 #[starknet::contract]
 mod aBTC {
     use starknet::ContractAddress;
     use starknet::get_caller_address;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use openzeppelin::token::erc20::ERC20Component;
+    use openzeppelin::token::erc20::ERC20Component::InternalTrait as ERC20InternalTrait;
+    use openzeppelin::token::erc20::ERC20HooksEmptyImpl;
     use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::access::ownable::OwnableComponent::InternalTrait as OwnableInternalTrait;
     use super::interface::{IABTC, IABTCView, IABTCOwner, IABTCERC20};
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+
+    // ERC20 Mixin
+    #[abi(embed_v0)]
+    impl ERC20MixinImpl = ERC20Component::ERC20MixinImpl<ContractState>;
+    impl ERC20InternalImpl = ERC20Component::InternalImpl<ContractState>;
+
+    // Ownable Mixin
+    #[abi(embed_v0)]
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -27,7 +37,9 @@ mod aBTC {
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
+        #[flat]
         ERC20Event: ERC20Component::Event,
+        #[flat]
         OwnableEvent: OwnableComponent::Event,
     }
 
@@ -37,39 +49,39 @@ mod aBTC {
         initial_owner: ContractAddress,
         vault_address: ContractAddress,
     ) {
-        self.erc20.initializer("aBTC", "aBTC", 18);
+        self.erc20.initializer("aBTC", "aBTC");
         self.ownable.initializer(initial_owner);
         self.vault_address.write(vault_address);
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IABTCImpl of IABTC<ContractState> {
         fn mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
             // Only vault can mint
             let caller = get_caller_address();
             let vault = self.vault_address.read();
-            assert(caller == vault, "aBTC: Only vault can mint");
+            assert(caller == vault, 'aBTC: Only vault can mint');
             
-            self.erc20._mint(recipient, amount);
+            self.erc20.mint(recipient, amount);
         }
 
         fn burn(ref self: ContractState, account: ContractAddress, amount: u256) {
             // Only vault can burn
             let caller = get_caller_address();
             let vault = self.vault_address.read();
-            assert(caller == vault, "aBTC: Only vault can burn");
+            assert(caller == vault, 'aBTC: Only vault can burn');
             
-            self.erc20._burn(account, amount);
+            self.erc20.burn(account, amount);
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IABTCViewImpl of IABTCView<ContractState> {
-        fn name(self: @ContractState) -> felt252 {
+        fn name(self: @ContractState) -> ByteArray {
             self.erc20.name()
         }
 
-        fn symbol(self: @ContractState) -> felt252 {
+        fn symbol(self: @ContractState) -> ByteArray {
             self.erc20.symbol()
         }
 
@@ -94,24 +106,24 @@ mod aBTC {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IABTCERC20Impl of IABTCERC20<ContractState> {
-        fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) {
-            self.erc20.transfer(recipient, amount);
+        fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
+            self.erc20.transfer(recipient, amount)
         }
 
         fn transfer_from(
             ref self: ContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
-        ) {
-            self.erc20.transfer_from(sender, recipient, amount);
+        ) -> bool {
+            self.erc20.transfer_from(sender, recipient, amount)
         }
 
-        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) {
-            self.erc20.approve(spender, amount);
+        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
+            self.erc20.approve(spender, amount)
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IABTCOwnerImpl of IABTCOwner<ContractState> {
         fn owner(self: @ContractState) -> ContractAddress {
             self.ownable.owner()
